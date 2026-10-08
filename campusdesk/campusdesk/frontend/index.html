@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
+  <title>Sign in - CampusDesk</title>
+  <meta name="description" content="CampusDesk, the IT support portal of TechNova Solutions.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%231b7f79'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="auth">
+    <section class="auth-brand" aria-label="About CampusDesk">
+      <div>
+        <div class="logo" id="brand-logo"></div>
+        <h2 style="margin-top:56px">Every request, from report to resolution.</h2>
+        <p class="lead">Send your IT issue once and follow it until it is solved. No more lost emails or calls.</p>
+        <ol class="lifecycle">
+          <li style="--i:0"><strong>Open</strong><span>You describe the problem</span></li>
+          <li style="--i:1"><strong>Assigned</strong><span>An administrator picks a technician</span></li>
+          <li style="--i:2"><strong>In progress</strong><span>The technician works on it</span></li>
+          <li style="--i:3"><strong>Resolved</strong><span>The fix is ready to be confirmed</span></li>
+          <li style="--i:4"><strong>Closed</strong><span>You confirm and the ticket is closed</span></li>
+        </ol>
+      </div>
+      <p class="auth-foot">TechNova Solutions - IT Support</p>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="banner info" id="expired-banner" hidden>Your session expired. Please sign in again.</div>
+        <div class="tabs" role="tablist" aria-label="Authentication">
+          <button type="button" role="tab" id="tab-login" aria-selected="true" aria-controls="panel-login">Sign in</button>
+          <button type="button" role="tab" id="tab-register" aria-selected="false" aria-controls="panel-register">Create account</button>
+        </div>
+
+        <div id="panel-login" role="tabpanel" aria-labelledby="tab-login">
+          <h1>Welcome back</h1>
+          <p class="sub">Sign in with your work email.</p>
+          <form id="login-form" novalidate>
+            <div class="field">
+              <label for="login-email">Email</label>
+              <input id="login-email" name="email" type="email" autocomplete="username" required>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="login-password">Password</label>
+              <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+              <span class="field-error"></span>
+            </div>
+            <button class="btn primary block" type="submit">Sign in</button>
+          </form>
+        </div>
+
+        <div id="panel-register" role="tabpanel" aria-labelledby="tab-register" hidden>
+          <h1>Create your account</h1>
+          <p class="sub">New accounts can create and follow their own support requests.</p>
+          <form id="register-form" novalidate>
+            <div class="field">
+              <label for="reg-name">Full name</label>
+              <input id="reg-name" name="fullName" type="text" autocomplete="name" maxlength="120" required>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="reg-email">Email</label>
+              <input id="reg-email" name="email" type="email" autocomplete="email" required>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="reg-password">Password</label>
+              <input id="reg-password" name="password" type="password" autocomplete="new-password" required>
+              <span class="hint">8+ characters with upper case, lower case, a number and a symbol.</span>
+              <span class="field-error"></span>
+            </div>
+            <div class="field">
+              <label for="reg-confirm">Confirm password</label>
+              <input id="reg-confirm" name="confirm" type="password" autocomplete="new-password" required>
+              <span class="field-error"></span>
+            </div>
+            <button class="btn primary block" type="submit">Create account</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+  <script type="module" src="js/pages/auth.js"></script>
+</body>
+</html>
