@@ -1,11 +1,13 @@
-# CampusDesk - one command deploys everything:   docker compose up -d --build
+# ==============================================================================
+# CampusDesk - Orquestación con Docker Compose
+# Despliegue con un solo comando: docker compose up -d --build
 #
-#   Frontend  ttp:h//localhost:5500        (nginx serving ./frontend: only HTML, CSS and JS)
-#   Backend   http://localhost:8080        (Swagger: /swagger-ui.html)
-#   pgAdmin   http://localhost:5050        (server host "postgres", port 5432)
-#   Postgres  localhost:5433               (from your machine)
-#
-# Credentials come from the ".env" file next to this one (not committed to Git).
+# Puertos expuestos en tu máquina host:
+#   - Frontend (Nginx): http://localhost:5500
+#   - Backend (Spring Boot): http://localhost:8081 (Swagger: http://localhost:8081/swagger-ui.html)
+#   - pgAdmin: http://localhost:5050 (Host en pgAdmin: "postgres", Puerto: 5423 internamente)
+#   - PostgreSQL: localhost:5433
+# ==============================================================================
 
 services:
 
@@ -51,6 +53,7 @@ services:
     ports:
       - "8081:8080"
     environment:
+      # Conexión interna dentro de la red de Docker al contenedor 'postgres' (puerto interno 5432)
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
