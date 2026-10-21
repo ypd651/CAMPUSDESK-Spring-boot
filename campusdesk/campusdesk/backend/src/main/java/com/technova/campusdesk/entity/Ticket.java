@@ -2,6 +2,7 @@ package com.technova.campusdesk.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,6 +21,15 @@ public class Ticket {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /**
+     * Optimistic locking: Hibernate adds "where version = ?" to every UPDATE and increments it. If two
+     * transactions modify the same ticket, the second one fails (ObjectOptimisticLockingFailureException -> 409).
+     * The default keeps rows that already existed valid when the column is added.
+     */
+    @Version
+    @Column(name = "version", nullable = false, columnDefinition = "bigint default 0")
+    private Long version;
 
     @Column(name = "title", nullable = false, length = 150)
     private String title;
@@ -52,6 +62,14 @@ public class Ticket {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** Optional deadline requested by the user (date only). */
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
+    /** Set when the technician marks the ticket RESOLVED; cleared if the requester rejects the resolution. */
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
 
     @PrePersist
     void onCreate() {

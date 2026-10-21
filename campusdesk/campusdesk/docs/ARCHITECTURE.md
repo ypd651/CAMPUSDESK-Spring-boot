@@ -62,10 +62,10 @@ Status names are in English (OPEN = ABIERTA, ASSIGNED = ASIGNADA, IN_PROGRESS = 
 
 | Code | Scenario | Expected | How to demonstrate |
 | --- | --- | --- | --- |
-| CP-01 | Register a valid user | Account with role USER | Register form or `POST /auth/register` |
-| CP-02 | Register a duplicate email | Rejected (409) | Register the same email twice |
+| CP-01 | Register a valid user | Account with role USER | As ADMIN: *Administration > Users > New user*, or `POST /auth/register` with an admin token (there is no public sign-up) |
+| CP-02 | Register a duplicate email | Rejected (409) | Create the same email twice as ADMIN |
 | CP-03 | Log in correctly | Valid JWT | `POST /auth/login` |
-| CP-04 | Protected endpoint without token | 401 | `GET /tickets` without Authorize |
+| CP-04 | Protected endpoint without token | 401 | `GET /tickets` without Authorize (also `POST /auth/register`) |
 | CP-05 | Create a ticket | Status OPEN | New request |
 | CP-06 | USER reads someone else's ticket | 403 | Open another user's `/tickets/{id}` |
 | CP-07 | ADMIN assigns a technician | Ticket becomes ASSIGNED | Admin tab or detail page |

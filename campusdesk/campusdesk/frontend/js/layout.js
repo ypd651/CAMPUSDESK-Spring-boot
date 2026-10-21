@@ -1,6 +1,8 @@
 import { can, canAny, getUser, logout, requireSession, updateUser } from './session.js';
-import { get } from './api.js';
-import { $, esc, toast } from './ui.js';
+import { get, patch } from './api.js';
+import {
+  $, PASSWORD_HINT, STRONG_PASSWORD, esc, fieldHtml, openDialog, setFormError, showFieldErrors, toast, withBusy,
+} from './ui.js';
 
 const ICONS = {
   dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
@@ -53,6 +55,7 @@ export async function mountShell(active, title) {
           <span class="name">${esc(user.fullName)}</span>
           <span class="meta">${esc(user.email)}</span>
           <span class="meta">Role: ${esc(user.role)}</span>
+          <button class="btn sm" id="password-btn" type="button">Change password</button>
           <button class="btn sm" id="logout-btn" type="button">Sign out</button>
         </div>
       </aside>
@@ -74,6 +77,7 @@ export async function mountShell(active, title) {
   $('#menu-btn').addEventListener('click', () => setMenu(!document.body.classList.contains('menu-open')));
   $('#scrim').addEventListener('click', () => setMenu(false));
   $('#logout-btn').addEventListener('click', logout);
+  $('#password-btn').addEventListener('click', passwordDialog);
   document.querySelectorAll('.nav a').forEach((link) => link.addEventListener('click', (event) => {
     if (link.getAttribute('aria-current') === 'page' || event.metaKey || event.ctrlKey) return;
     event.preventDefault();
@@ -81,6 +85,39 @@ export async function mountShell(active, title) {
     setTimeout(() => { window.location.href = link.href; }, 160);
   }));
   return $('#content');
+}
+
+function passwordDialog() {
+  const dialog = openDialog(`
+    <h2>Change password</h2>
+    <form id="password-form" novalidate>
+      ${fieldHtml({ name: 'currentPassword', label: 'Current password', type: 'password', autocomplete: 'current-password' })}
+      ${fieldHtml({ name: 'newPassword', label: 'New password', type: 'password', hint: PASSWORD_HINT, autocomplete: 'new-password' })}
+      ${fieldHtml({ name: 'confirm', label: 'Confirm new password', type: 'password', autocomplete: 'new-password' })}
+      <div class="form-actions">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="submit">Save password</button>
+      </div>
+    </form>`);
+  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+  dialog.querySelector('#password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const body = { currentPassword: form.currentPassword.value, newPassword: form.newPassword.value };
+    const errors = {};
+    if (!body.currentPassword) errors.currentPassword = 'Current password is required';
+    if (!STRONG_PASSWORD.test(body.newPassword)) errors.newPassword = PASSWORD_HINT;
+    if (form.confirm.value !== body.newPassword) errors.confirm = 'Passwords do not match';
+    setFormError(form, '');
+    if (showFieldErrors(form, errors)) return;
+    try {
+      await withBusy(form.querySelector('button[type=submit]'), () => patch('/api/auth/password', body));
+      toast('Password updated', 'success');
+      dialog.close();
+    } catch (error) {
+      if (!showFieldErrors(form, error.fieldErrors)) setFormError(form, error.message);
+    }
+  });
 }
 
 export { can };

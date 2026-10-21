@@ -13,6 +13,7 @@ const TABS = [
   { key: 'technicians', label: 'Technicians', show: () => can('TICKET_ASSIGN'), load: loadTechnicians },
   { key: 'users', label: 'Users', show: () => can('USERS_READ'), load: loadUsers },
   { key: 'roles', label: 'Roles', show: () => can('ROLES_MANAGE'), load: loadRoles },
+  { key: 'audit', label: 'Audit', show: () => can('USERS_MANAGE'), load: () => loadAudit(0) },
 ];
 
 if (content) {
@@ -21,7 +22,7 @@ if (content) {
     content.innerHTML = emptyHtml('Access denied', 'Your role has no administration permissions.');
   } else {
     content.innerHTML = `
-      <div class="page-head"><div><h1>Administration</h1><p>Assign technicians, manage users and build roles.</p></div></div>
+      <div class="page-head"><div><h1>Administration</h1><p>Assign technicians, manage users, build roles and review the audit trail.</p></div></div>
       <div class="admin-tabs" role="tablist">${tabs.map((t) =>
         `<button type="button" role="tab" data-tab="${t.key}" aria-selected="false">${esc(t.label)}</button>`).join('')}</div>
       <div id="tab-body"></div>`;
@@ -57,7 +58,8 @@ async function loadTickets() {
     $$('[data-assign]').forEach((select) => select.addEventListener('change', async () => {
       if (!select.value) return;
       try {
-        await patch(`/api/tickets/${select.dataset.assign}/assign`, { technicianId: Number(select.value) });
+        const seen = tickets.find((t) => String(t.id) === select.dataset.assign);
+        await patch(`/api/tickets/${select.dataset.assign}/assign`, { technicianId: Number(select.value), version: seen?.version });
         toast('Technician assigned', 'success');
       } catch (error) {
         toast(error.message, 'error');
@@ -87,7 +89,7 @@ async function loadTechnicians() {
       $('#panel').innerHTML = emptyHtml('No technicians yet', 'Create a user with a role that can work on tickets (for example TECHNICIAN).');
       return;
     }
-    const load = (id) => tickets.filter((t) => t.technician?.id === id && t.status !== 'CLOSED');
+    const load = (id) => tickets.filter((t) => t.technician?.id === id && !['CLOSED', 'CANCELLED'].includes(t.status));
     $('#panel').innerHTML = `<div class="table-wrap"><table class="stack">
       <thead><tr><th>Name</th><th>Email</th><th>Active tickets</th><th>In progress</th></tr></thead>
       <tbody>${technicians.map((t) => `<tr>
@@ -241,4 +243,43 @@ function roleDialog(catalog, role = null) {
       if (!showFieldErrors(form, error.fieldErrors)) setFormError(form, error.message);
     }
   });
+}
+
+// ---------------- audit trail ----------------
+const AUDIT_LABELS = {
+  TICKET_ASSIGNED: 'Ticket assigned', TICKET_REASSIGNED: 'Ticket reassigned', TICKET_CANCELLED: 'Ticket cancelled', TICKET_PRIORITY_CHANGED: 'Priority changed', TICKET_AUTO_CLOSED: 'Ticket auto-closed',
+  USER_CREATED: 'User created', USER_ROLE_CHANGED: 'Role changed', USER_ENABLED: 'User enabled', USER_DISABLED: 'User disabled',
+};
+
+async function loadAudit(page, action = '') {
+  try {
+    const params = new URLSearchParams({ page, size: 15 });
+    if (action) params.set('action', action);
+    const result = await get(`/api/audit?${params}`);
+    $('#panel').innerHTML = `
+      <div class="card-head"><h2>Audit trail (${result.totalElements})</h2>
+        <select id="audit-action" aria-label="Filter by action">
+          <option value="">All actions</option>
+          ${Object.entries(AUDIT_LABELS).map(([key, label]) => `<option value="${key}" ${key === action ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+        </select></div>
+      ${result.content.length ? `<div class="table-wrap"><table class="stack">
+        <thead><tr><th>When</th><th>Action</th><th>Done by</th><th>Target</th><th>Details</th></tr></thead>
+        <tbody>${result.content.map((entry) => `<tr>
+          <td data-label="When">${esc(formatDate(entry.createdAt))}</td>
+          <td data-label="Action"><span class="badge plain">${esc(AUDIT_LABELS[entry.action] || entry.action)}</span></td>
+          <td data-label="Done by">${esc(entry.actor.fullName)}</td>
+          <td data-label="Target">${esc(entry.entityType)}${entry.entityId ? ` #${entry.entityId}` : ''}</td>
+          <td data-label="Details">${esc(entry.details || '')}</td>
+        </tr>`).join('')}</tbody></table></div>
+        <div class="pager">
+          <span class="id">Page ${result.page + 1} of ${Math.max(1, result.totalPages)}</span>
+          <div class="inline-actions">
+            <button class="btn sm" id="audit-prev" type="button" ${result.first ? 'disabled' : ''}>Previous</button>
+            <button class="btn sm" id="audit-next" type="button" ${result.last ? 'disabled' : ''}>Next</button>
+          </div>
+        </div>` : emptyHtml('No audit entries yet', 'Assignments, cancellations and user changes will appear here.')}`;
+    $('#audit-action').addEventListener('change', (e) => loadAudit(0, e.target.value));
+    $('#audit-prev')?.addEventListener('click', () => loadAudit(page - 1, action));
+    $('#audit-next')?.addEventListener('click', () => loadAudit(page + 1, action));
+  } catch (error) { fail(error); }
 }

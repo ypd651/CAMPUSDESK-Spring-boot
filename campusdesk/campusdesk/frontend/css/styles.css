@@ -157,6 +157,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); outline: 
 .stat.progress { border-top-color: var(--s-progress); }
 .stat.resolved { border-top-color: var(--s-resolved); }
 .stat.closed { border-top-color: var(--s-closed); }
+.stat.cancelled { border-top-color: #b98a8a; }
 .two-col { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start; }
 .two-col .card + .card { margin-top: 0; }
 .bars { display: grid; gap: 12px; }
@@ -182,6 +183,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); outline: 
 .badge.IN_PROGRESS { background: var(--warn-tint); color: var(--s-progress); }
 .badge.RESOLVED { background: var(--ok-tint); color: var(--s-resolved); }
 .badge.CLOSED { background: #e8eceb; color: var(--s-closed); }
+.badge.CANCELLED { background: #f3e9e9; color: #8a4b4b; }
 .badge.LOW { background: #e8eceb; color: #55696e; }
 .badge.MEDIUM { background: #e3edf8; color: var(--s-open); }
 .badge.HIGH { background: var(--warn-tint); color: var(--s-progress); }
@@ -342,3 +344,12 @@ dialog.modal[open]::backdrop { animation: fade .24s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- pagination, audit and team statistics ---------- */
+.pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.pager .inline-actions { display: flex; gap: 8px; align-items: center; }
+.filters .field input[type="date"] { min-width: 150px; }
+.comment header .btn { margin-left: 10px; }
+.perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+.big-number { font-size: 2rem; font-weight: 700; line-height: 1.1; }
+@media (max-width: 860px) { .perf-grid { grid-template-columns: 1fr; } }

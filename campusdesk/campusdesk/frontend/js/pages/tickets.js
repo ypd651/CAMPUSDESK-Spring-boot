@@ -2,13 +2,20 @@ import { get, post } from '../api.js';
 import { mountShell } from '../layout.js';
 import { can } from '../session.js';
 import {
-  $, CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS, categoryLabel, emptyHtml, esc, fieldHtml, formatDate,
+  $, CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS, categoryLabel, emptyHtml, esc, fieldHtml, formatDate, localToday,
   skeletonRows, openDialog, priorityBadge, selectHtml, setFormError, showFieldErrors, stagger, statusBadge, toast, withBusy,
 } from '../ui.js';
 
 const content = await mountShell('tickets', 'Tickets');
-const filters = { status: '', priority: '', category: '' };
-let allTickets = [];
+// Everything is filtered, sorted and paginated by the backend (GET /api/tickets/search).
+const filters = { status: '', priority: '', category: '', createdFrom: '', createdTo: '', q: '' };
+const view = { sort: 'createdAt,desc', page: 0, size: 10 };
+let current = null;   // last page returned by the API
+
+const SORT_OPTIONS = [
+  ['createdAt,desc', 'Newest first'], ['createdAt,asc', 'Oldest first'], ['updatedAt,desc', 'Recently updated'],
+  ['dueDate,asc', 'Due date (soonest)'], ['priority,asc', 'Priority (A-Z)'], ['status,asc', 'Status (A-Z)'], ['title,asc', 'Title (A-Z)'],
+];
 
 const options = (labels, allLabel) => [['', allLabel], ...Object.entries(labels)];
 
@@ -23,11 +30,14 @@ function renderPage() {
       <form class="filters" id="filters" aria-label="Ticket filters">
         <div class="field search-field">
           <label for="f-q">Search</label>
-          <input id="f-q" name="q" type="search" placeholder="Title, person, category..." autocomplete="off">
+          <input id="f-q" name="q" type="search" placeholder="Title or description..." autocomplete="off">
         </div>
         ${selectHtml({ name: 'status', label: 'Status', options: options(STATUS_LABELS, 'All statuses') })}
         ${selectHtml({ name: 'priority', label: 'Priority', options: options(PRIORITY_LABELS, 'All priorities') })}
         ${selectHtml({ name: 'category', label: 'Category', options: options(CATEGORY_LABELS, 'All categories') })}
+        <div class="field"><label for="f-from">Created from</label><input id="f-from" name="createdFrom" type="date"></div>
+        <div class="field"><label for="f-to">Created to</label><input id="f-to" name="createdTo" type="date"></div>
+        ${selectHtml({ name: 'sort', label: 'Sort by', options: SORT_OPTIONS, value: view.sort })}
         <button class="btn" type="button" id="clear-filters">Clear filters</button>
       </form>
       <div id="list"></div>
@@ -36,13 +46,21 @@ function renderPage() {
   $('#filters').addEventListener('submit', (e) => e.preventDefault());
   $('#filters').addEventListener('change', (e) => {
     if (e.target.name === 'q') return;
-    filters[e.target.name] = e.target.value;
+    if (e.target.name === 'sort') view.sort = e.target.value;
+    else filters[e.target.name] = e.target.value;
+    view.page = 0;
     loadTickets();
   });
-  $('#f-q').addEventListener('input', paint);
+  let timer;
+  $('#f-q').addEventListener('input', (e) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { filters.q = e.target.value.trim(); view.page = 0; loadTickets(); }, 350);
+  });
   $('#clear-filters').addEventListener('click', () => {
     $('#filters').reset();
     Object.keys(filters).forEach((k) => (filters[k] = ''));
+    view.sort = 'createdAt,desc';
+    view.page = 0;
     loadTickets();
   });
   $('#new-ticket')?.addEventListener('click', openCreateDialog);
@@ -51,9 +69,14 @@ function renderPage() {
 async function loadTickets() {
   const list = $('#list');
   list.innerHTML = skeletonRows(6);
-  const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
+  const [sort, direction] = view.sort.split(',');
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
+  params.set('sort', sort);
+  params.set('direction', direction);
+  params.set('page', view.page);
+  params.set('size', view.size);
   try {
-    allTickets = await get(`/api/tickets${query ? `?${query}` : ''}`);
+    current = await get(`/api/tickets/search?${params}`);
     paint();
   } catch (error) {
     list.innerHTML = emptyHtml('Could not load the tickets', error.message);
@@ -61,21 +84,17 @@ async function loadTickets() {
   }
 }
 
-/** Applies the instant text search on top of the tickets already filtered by the backend. */
 function paint() {
   const list = $('#list');
-  const text = ($('#f-q')?.value || '').trim().toLowerCase();
-  const tickets = text
-    ? allTickets.filter((t) => [t.id, t.title, t.requester.fullName, t.technician?.fullName, categoryLabel(t.category),
-        STATUS_LABELS[t.status], PRIORITY_LABELS[t.priority]].join(' ').toLowerCase().includes(text))
-    : allTickets;
-
+  const tickets = current.content;
   if (!tickets.length) {
-    const filtered = text || Object.values(filters).some(Boolean);
+    const filtered = Object.values(filters).some(Boolean);
     list.innerHTML = emptyHtml(filtered ? 'No tickets match your search' : 'No tickets yet',
       filtered ? 'Try another word or clear the filters.' : (can('TICKET_CREATE') ? 'Create a new request to see it here.' : ''));
     return;
   }
+  const from = current.page * current.size + 1;
+  const to = from + tickets.length - 1;
   list.innerHTML = `
     <div class="table-wrap">
       <table class="stack">
@@ -83,8 +102,17 @@ function paint() {
         <tbody>${tickets.map(rowHtml).join('')}</tbody>
       </table>
     </div>
-    <p class="id" style="margin-top:10px">${tickets.length} ticket(s)</p>`;
+    <div class="pager">
+      <span class="id">Showing ${from}-${to} of ${current.totalElements} ticket(s)</span>
+      <div class="inline-actions">
+        <button class="btn sm" type="button" id="prev-page" ${current.first ? 'disabled' : ''}>Previous</button>
+        <span class="id">Page ${current.page + 1} of ${Math.max(1, current.totalPages)}</span>
+        <button class="btn sm" type="button" id="next-page" ${current.last ? 'disabled' : ''}>Next</button>
+      </div>
+    </div>`;
   stagger(list, 'tbody tr');
+  $('#prev-page').addEventListener('click', () => { view.page -= 1; loadTickets(); });
+  $('#next-page').addEventListener('click', () => { view.page += 1; loadTickets(); });
   list.querySelectorAll('tr.clickable').forEach((row) => {
     row.addEventListener('click', (e) => {
       if (!e.target.closest('a')) window.location.href = `ticket-detail.html?id=${row.dataset.id}`;
@@ -120,6 +148,11 @@ function openCreateDialog() {
         ${selectHtml({ name: 'category', label: 'Category', options: Object.entries(CATEGORY_LABELS) })}
         ${selectHtml({ name: 'priority', label: 'Priority', options: Object.entries(PRIORITY_LABELS), value: 'MEDIUM' })}
       </div>
+      <div class="field">
+        <label for="f-dueDate">Needed by (optional)</label>
+        <input id="f-dueDate" name="dueDate" type="date" min="${localToday()}">
+        <span class="field-error"></span>
+      </div>
       <div class="form-actions">
         <button class="btn" type="button" data-close>Cancel</button>
         <button class="btn primary" type="submit">Send request</button>
@@ -135,6 +168,7 @@ function openCreateDialog() {
       description: form.description.value.trim(),
       category: form.category.value,
       priority: form.priority.value,
+      dueDate: form.dueDate.value || null,
     };
     const errors = {};
     if (body.title.length < 5) errors.title = 'Title must have at least 5 characters';

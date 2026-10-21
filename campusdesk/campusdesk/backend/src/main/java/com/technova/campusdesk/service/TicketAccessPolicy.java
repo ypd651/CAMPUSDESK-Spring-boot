@@ -1,5 +1,6 @@
 package com.technova.campusdesk.service;
 
+import com.technova.campusdesk.dto.TicketFilter;
 import com.technova.campusdesk.entity.Permission;
 import com.technova.campusdesk.entity.Ticket;
 import com.technova.campusdesk.entity.TicketCategory;
@@ -9,6 +10,8 @@ import com.technova.campusdesk.exception.ForbiddenException;
 import com.technova.campusdesk.security.UserPrincipal;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.data.jpa.domain.Specification;
@@ -64,6 +67,11 @@ public class TicketAccessPolicy {
         return actor.hasPermission(Permission.TICKET_CLOSE_OWN) && isRequester(actor, ticket);
     }
 
+    /** The requester or an administrator (TICKET_ASSIGN) can cancel a ticket that has not started. */
+    public boolean canCancel(UserPrincipal actor, Ticket ticket) {
+        return canClose(actor, ticket) || canAssign(actor);
+    }
+
     public boolean canComment(UserPrincipal actor, Ticket ticket) {
         return actor.hasPermission(Permission.COMMENT_CREATE) && canView(actor, ticket);
     }
@@ -86,6 +94,13 @@ public class TicketAccessPolicy {
         }
         if (canClose(actor, ticket) && status == TicketStatus.RESOLVED) {
             actions.add("CLOSE");
+            actions.add("REOPEN");
+        }
+        if ((status == TicketStatus.OPEN || status == TicketStatus.ASSIGNED) && canCancel(actor, ticket)) {
+            actions.add("CANCEL");
+        }
+        if (canAssign(actor) && status.isActive()) {
+            actions.add("PRIORITY");
         }
         if (canComment(actor, ticket) && status.isActive()) {
             actions.add("COMMENT");
@@ -93,12 +108,17 @@ public class TicketAccessPolicy {
         return actions;
     }
 
-    /**
-     * Query restriction applied in the database: users with TICKET_READ_ALL see everything; others only
-     * their own and/or assigned tickets. Optional filters are combined with AND. Used for lists and dashboard.
-     */
+    /** Visibility scope plus the three classic filters (status, priority, category). */
     public Specification<Ticket> visibleTo(UserPrincipal actor, TicketStatus status,
                                            TicketPriority priority, TicketCategory category) {
+        return visibleTo(actor, TicketFilter.of(status, priority, category));
+    }
+
+    /**
+     * Query restriction applied in the database: users with TICKET_READ_ALL see everything; others only
+     * their own and/or assigned tickets. Optional filters are combined with AND. Used for lists, search and dashboard.
+     */
+    public Specification<Ticket> visibleTo(UserPrincipal actor, TicketFilter filter) {
         return (root, query, cb) -> {
             List<Predicate> filters = new ArrayList<>();
             if (!actor.hasPermission(Permission.TICKET_READ_ALL)) {
@@ -111,16 +131,40 @@ public class TicketAccessPolicy {
                 }
                 filters.add(scope.isEmpty() ? cb.disjunction() : cb.or(scope.toArray(new Predicate[0])));
             }
-            if (status != null) {
-                filters.add(cb.equal(root.get("status"), status));
+            if (filter.status() != null) {
+                filters.add(cb.equal(root.get("status"), filter.status()));
             }
-            if (priority != null) {
-                filters.add(cb.equal(root.get("priority"), priority));
+            if (filter.priority() != null) {
+                filters.add(cb.equal(root.get("priority"), filter.priority()));
             }
-            if (category != null) {
-                filters.add(cb.equal(root.get("category"), category));
+            if (filter.category() != null) {
+                filters.add(cb.equal(root.get("category"), filter.category()));
+            }
+            if (filter.technicianId() != null) {
+                filters.add(cb.equal(root.get("technician").get("id"), filter.technicianId()));
+            }
+            if (Boolean.TRUE.equals(filter.unassigned())) {
+                filters.add(cb.isNull(root.get("technician")));
+            }
+            if (filter.createdFrom() != null) {
+                filters.add(cb.greaterThanOrEqualTo(root.<Instant>get("createdAt"),
+                        filter.createdFrom().atStartOfDay(ZoneOffset.UTC).toInstant()));
+            }
+            if (filter.createdTo() != null) {
+                filters.add(cb.lessThan(root.<Instant>get("createdAt"),
+                        filter.createdTo().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()));
+            }
+            if (filter.text() != null && !filter.text().isBlank()) {
+                String pattern = "%" + escapeLike(filter.text().trim().toLowerCase()) + "%";
+                filters.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), pattern, '\\'),
+                        cb.like(cb.lower(root.get("description")), pattern, '\\')));
             }
             return cb.and(filters.toArray(new Predicate[0]));
         };
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

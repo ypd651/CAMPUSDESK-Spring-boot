@@ -1,8 +1,9 @@
-import { get, patch, post, put } from '../api.js';
+import { del, get, patch, post, put } from '../api.js';
 import { mountShell } from '../layout.js';
+import { getUser } from '../session.js';
 import {
   $, CATEGORY_LABELS, PRIORITY_LABELS, STATUS_FLOW, STATUS_LABELS, categoryLabel, confirmDialog, emptyHtml, esc,
-  fieldHtml, formatDate, loadingHtml, openDialog, stagger, priorityBadge, selectHtml, setFormError, showFieldErrors,
+  fieldHtml, formatDate, loadingHtml, localToday, openDialog, stagger, priorityBadge, selectHtml, setFormError, showFieldErrors,
   statusBadge, toast, withBusy,
 } from '../ui.js';
 
@@ -30,7 +31,18 @@ async function load() {
   }
 }
 
+const today = localToday;
+
+function dueHtml() {
+  if (!ticket.dueDate) return 'Not set';
+  const overdue = ticket.dueDate < today() && !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status);
+  return `${esc(ticket.dueDate)}${overdue ? ' <span class="badge CRITICAL">Overdue</span>' : ''}`;
+}
+
 function stepper() {
+  if (ticket.status === 'CANCELLED') {
+    return '<div class="locked">This request was cancelled. It is kept for the record and cannot be modified.</div>';
+  }
   const index = STATUS_FLOW.indexOf(ticket.status);
   return `<ol class="stepper" aria-label="Ticket progress">${STATUS_FLOW.map((s, i) =>
     `<li class="${i < index ? 'done' : i === index ? 'current' : ''}" ${i === index ? 'aria-current="step"' : ''}>${esc(STATUS_LABELS[s])}</li>`).join('')}</ol>`;
@@ -57,8 +69,8 @@ function render(comments, history) {
         </section>
         <section class="card" id="comments-card">
           <div class="card-head"><h2>Comments (${comments.length})</h2></div>
-          ${comments.length ? comments.map(commentHtml).join('') : emptyHtml('No comments yet')}
-          ${has('COMMENT') ? commentForm() : `<div class="locked" style="margin-top:14px">${ticket.status === 'CLOSED' ? 'This ticket is closed and no longer accepts comments.' : 'You can read the comments but not add new ones.'}</div>`}
+          ${comments.length ? comments.map((c) => commentHtml(c, has('COMMENT'))).join('') : emptyHtml('No comments yet')}
+          ${has('COMMENT') ? commentForm() : `<div class="locked" style="margin-top:14px">${['CLOSED', 'CANCELLED'].includes(ticket.status) ? 'This ticket is closed and no longer accepts comments.' : 'You can read the comments but not add new ones.'}</div>`}
         </section>
       </div>
       <div>
@@ -68,8 +80,10 @@ function render(comments, history) {
             <dt>Requester</dt><dd>${esc(ticket.requester.fullName)}<br><small>${esc(ticket.requester.email)}</small></dd>
             <dt>Technician</dt><dd>${ticket.technician ? `${esc(ticket.technician.fullName)}<br><small>${esc(ticket.technician.email)}</small>` : 'Not assigned yet'}</dd>
             <dt>Category</dt><dd>${esc(categoryLabel(ticket.category))}</dd>
+            <dt>Needed by</dt><dd>${dueHtml()}</dd>
             <dt>Created</dt><dd>${esc(formatDate(ticket.createdAt))}</dd>
             <dt>Updated</dt><dd>${esc(formatDate(ticket.updatedAt))}</dd>
+            ${ticket.resolvedAt ? `<dt>Resolved</dt><dd>${esc(formatDate(ticket.resolvedAt))}</dd>` : ''}
           </dl>
         </section>
         ${actionsCard(has)}
@@ -84,9 +98,10 @@ function render(comments, history) {
   bind(has);
 }
 
-const commentHtml = (c) => `
+const commentHtml = (c, active) => `
   <article class="comment">
-    <header><strong>${esc(c.author.fullName)}</strong><span>${esc(formatDate(c.createdAt))}</span></header>
+    <header><strong>${esc(c.author.fullName)}</strong><span>${esc(formatDate(c.createdAt))}</span>
+      ${active && c.author.id === getUser()?.id ? `<button class="btn sm" type="button" data-del-comment="${c.id}">Delete</button>` : ''}</header>
     <p>${esc(c.content)}</p>
   </article>`;
 
@@ -113,12 +128,15 @@ function historyHtml(h) {
 function actionsCard(has) {
   const buttons = [];
   if (has('EDIT')) buttons.push('<button class="btn" data-act="edit" type="button">Edit request</button>');
+  if (has('PRIORITY')) buttons.push('<button class="btn" data-act="priority" type="button">Change priority</button>');
   if (has('ASSIGN')) buttons.push(`<button class="btn primary" data-act="assign" type="button">${ticket.technician ? 'Reassign technician' : 'Assign technician'}</button>`);
   if (has('START')) buttons.push('<button class="btn primary" data-act="start" type="button">Start working</button>');
   if (has('RESOLVE')) buttons.push('<button class="btn primary" data-act="resolve" type="button">Mark as resolved</button>');
   if (has('CLOSE')) buttons.push('<button class="btn primary" data-act="close" type="button">Confirm and close</button>');
+  if (has('REOPEN')) buttons.push('<button class="btn" data-act="reopen" type="button">Reject resolution</button>');
+  if (has('CANCEL')) buttons.push('<button class="btn danger" data-act="cancel" type="button">Cancel request</button>');
   if (!buttons.length) {
-    const text = ticket.status === 'CLOSED' ? 'This ticket is closed.' : 'No actions available for you in this state.';
+    const text = ['CLOSED', 'CANCELLED'].includes(ticket.status) ? `This ticket is ${STATUS_LABELS[ticket.status].toLowerCase()}.` : 'No actions available for you in this state.';
     return `<section class="card"><div class="card-head"><h2>Actions</h2></div><div class="locked">${text}</div></section>`;
   }
   return `<section class="card"><div class="card-head"><h2>Actions</h2></div><div class="actions-panel">${buttons.join('')}</div></section>`;
@@ -127,6 +145,17 @@ function actionsCard(has) {
 function bind() {
   content.querySelectorAll('[data-act]').forEach((button) =>
     button.addEventListener('click', () => handlers[button.dataset.act](button)));
+
+  content.querySelectorAll('[data-del-comment]').forEach((button) => button.addEventListener('click', async () => {
+    if (!(await confirmDialog('Delete comment?', 'This comment will be removed.', 'Delete', true))) return;
+    try {
+      await del(`/api/tickets/${id}/comments/${button.dataset.delComment}`);
+      toast('Comment deleted', 'success');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    load();
+  }));
 
   $('#comment-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -146,7 +175,7 @@ function bind() {
 
 async function changeStatus(status, button, note) {
   try {
-    await withBusy(button, () => patch(`/api/tickets/${id}/status`, { status, note }));
+    await withBusy(button, () => patch(`/api/tickets/${id}/status`, { status, note, version: ticket.version }));
     toast(`Ticket is now ${STATUS_LABELS[status].toLowerCase()}`, 'success');
   } catch (error) {
     toast(error.message, 'error');
@@ -177,6 +206,63 @@ const handlers = {
       await changeStatus('RESOLVED', button, note);
     });
   },
+  priority: () => {
+    const dialog = openDialog(`
+      <h2>Change priority</h2>
+      <form id="priority-form">
+        ${selectHtml({ name: 'priority', label: 'New priority', options: Object.entries(PRIORITY_LABELS), value: ticket.priority })}
+        <div class="field">
+          <label for="f-pnote">Reason (optional)</label>
+          <textarea id="f-pnote" name="note" maxlength="255" style="min-height:70px"></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="button" data-close>Cancel</button>
+          <button class="btn primary" type="submit">Save priority</button>
+        </div>
+      </form>`);
+    dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+    dialog.querySelector('#priority-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      try {
+        await withBusy($('button[type=submit]', form), () =>
+          patch(`/api/tickets/${id}/priority`, { priority: form.priority.value, note: form.note.value.trim() || undefined, version: ticket.version }));
+        toast('Priority updated', 'success');
+        dialog.close();
+        load();
+      } catch (error) {
+        setFormError(form, error.message);
+      }
+    });
+  },
+  reopen: (button) => {
+    const dialog = openDialog(`
+      <h2>Reject the resolution</h2>
+      <form id="reopen-form" novalidate>
+        <div class="field">
+          <label for="f-reason">Why is the problem not solved? (required)</label>
+          <textarea id="f-reason" name="note" maxlength="255" style="min-height:90px" required></textarea>
+          <span class="field-error"></span>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="button" data-close>Cancel</button>
+          <button class="btn primary" type="submit">Send back to the technician</button>
+        </div>
+      </form>`);
+    dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+    dialog.querySelector('#reopen-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const note = form.note.value.trim();
+      if (showFieldErrors(form, note ? null : { note: 'Explain why the problem is not solved' })) return;
+      dialog.close();
+      await changeStatus('IN_PROGRESS', button, note);
+    });
+  },
+  cancel: async (button) => {
+    const ok = await confirmDialog('Cancel this request?', 'The ticket will be cancelled and kept for the record. It cannot be reopened or commented.', 'Cancel request', true);
+    if (ok) changeStatus('CANCELLED', button);
+  },
   close: async (button) => {
     const ok = await confirmDialog('Close this ticket?', 'Confirm that the problem is solved. A closed ticket cannot be changed or commented.', 'Close ticket');
     if (ok) changeStatus('CLOSED', button);
@@ -195,6 +281,11 @@ const handlers = {
           ${selectHtml({ name: 'category', label: 'Category', options: Object.entries(CATEGORY_LABELS), value: ticket.category })}
           ${selectHtml({ name: 'priority', label: 'Priority', options: Object.entries(PRIORITY_LABELS), value: ticket.priority })}
         </div>
+        <div class="field">
+          <label for="f-dueDate">Needed by (optional)</label>
+          <input id="f-dueDate" name="dueDate" type="date" min="${today()}" value="${esc(ticket.dueDate || '')}">
+          <span class="field-error"></span>
+        </div>
         <div class="form-actions">
           <button class="btn" type="button" data-close>Cancel</button>
           <button class="btn primary" type="submit">Save changes</button>
@@ -206,7 +297,8 @@ const handlers = {
       const form = event.target;
       const body = {
         title: form.title.value.trim(), description: form.description.value.trim(),
-        category: form.category.value, priority: form.priority.value,
+        category: form.category.value, priority: form.priority.value, dueDate: form.dueDate.value || null,
+        version: ticket.version,
       };
       setFormError(form, '');
       try {
@@ -250,7 +342,7 @@ const handlers = {
       const form = event.target;
       try {
         await withBusy($('button[type=submit]', form), () =>
-          patch(`/api/tickets/${id}/assign`, { technicianId: Number(form.technicianId.value) }));
+          patch(`/api/tickets/${id}/assign`, { technicianId: Number(form.technicianId.value), version: ticket.version }));
         toast('Technician assigned', 'success');
         dialog.close();
         load();

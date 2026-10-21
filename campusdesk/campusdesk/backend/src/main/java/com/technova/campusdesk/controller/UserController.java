@@ -40,6 +40,13 @@ public class UserController {
         return userService.list();
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('USERS_READ')")
+    @Operation(summary = "Detail of one user")
+    public UserResponse get(@PathVariable Long id) {
+        return userService.get(id);
+    }
+
     @GetMapping("/technicians")
     @PreAuthorize("hasAuthority('TICKET_ASSIGN')")
     @Operation(summary = "List the technicians a ticket can be assigned to")
@@ -51,8 +58,9 @@ public class UserController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAuthority('USERS_MANAGE')")
     @Operation(summary = "Create a user with any role (administrator provisioning)")
-    public UserResponse create(@Valid @RequestBody CreateUserRequest request) {
-        return userService.create(request);
+    public UserResponse create(@Valid @RequestBody CreateUserRequest request,
+                               @AuthenticationPrincipal UserPrincipal actor) {
+        return userService.create(request, actor);
     }
 
     @PatchMapping("/{id}")

@@ -77,9 +77,9 @@ BEGIN
         ('Thanks! Let me know when I can test again.', t, laura, NOW() - INTERVAL '22 hours');
 
     -- 5. RESOLVED
-    INSERT INTO tickets (title, description, category, priority, status, requester_id, technician_id, created_at, updated_at)
+    INSERT INTO tickets (title, description, category, priority, status, requester_id, technician_id, created_at, updated_at, resolved_at)
     VALUES ('Cannot open the shared finance folder', 'I get "access denied" when opening the Finance shared folder since my team change.',
-            'ACCESS', 'HIGH', 'RESOLVED', diego, carlos, NOW() - INTERVAL '3 days', NOW() - INTERVAL '5 hours') RETURNING id INTO t;
+            'ACCESS', 'HIGH', 'RESOLVED', diego, carlos, NOW() - INTERVAL '3 days', NOW() - INTERVAL '5 hours', NOW() - INTERVAL '5 hours') RETURNING id INTO t;
     INSERT INTO status_history (ticket_id, previous_status, new_status, changed_by_id, changed_at, note) VALUES
         (t, NULL, 'OPEN', diego, NOW() - INTERVAL '3 days', 'Ticket created'),
         (t, 'OPEN', 'ASSIGNED', admin_id, NOW() - INTERVAL '70 hours', 'Assigned to Carlos Rivera'),
@@ -89,9 +89,9 @@ BEGIN
         ('Your account was added to the Finance group. Please sign out and in again, then confirm.', t, carlos, NOW() - INTERVAL '5 hours');
 
     -- 6. CLOSED
-    INSERT INTO tickets (title, description, category, priority, status, requester_id, technician_id, created_at, updated_at)
+    INSERT INTO tickets (title, description, category, priority, status, requester_id, technician_id, created_at, updated_at, resolved_at)
     VALUES ('Monitor flickers on the left display', 'The left monitor flickers every few seconds, mostly when I use the video call app.',
-            'HARDWARE', 'LOW', 'CLOSED', laura, carlos, NOW() - INTERVAL '6 days', NOW() - INTERVAL '4 days') RETURNING id INTO t;
+            'HARDWARE', 'LOW', 'CLOSED', laura, carlos, NOW() - INTERVAL '6 days', NOW() - INTERVAL '4 days', NOW() - INTERVAL '4 days 3 hours') RETURNING id INTO t;
     INSERT INTO status_history (ticket_id, previous_status, new_status, changed_by_id, changed_at, note) VALUES
         (t, NULL, 'OPEN', laura, NOW() - INTERVAL '6 days', 'Ticket created'),
         (t, 'OPEN', 'ASSIGNED', admin_id, NOW() - INTERVAL '5 days 20 hours', 'Assigned to Carlos Rivera'),

@@ -9,6 +9,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -79,6 +80,13 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiError> integrity(DataIntegrityViolationException e, HttpServletRequest request) {
         log.warn("Data integrity violation on {}", request.getRequestURI());
         return build(HttpStatus.CONFLICT, "The data conflicts with an existing record", request, null);
+    }
+
+    /** Two transactions changed the same row (@Version): the second one loses with a 409. */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ResponseEntity<ApiError> optimisticLock(OptimisticLockingFailureException e, HttpServletRequest request) {
+        log.warn("Optimistic lock failure on {}", request.getRequestURI());
+        return build(HttpStatus.CONFLICT, "The record was modified by someone else. Reload it and try again", request, null);
     }
 
     /** Last resort. Standard Spring MVC errors (404 route, 405...) keep their own status. */

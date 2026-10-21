@@ -10,7 +10,7 @@ export function esc(value) {
 }
 
 export const STATUS_LABELS = {
-  OPEN: 'Open', ASSIGNED: 'Assigned', IN_PROGRESS: 'In progress', RESOLVED: 'Resolved', CLOSED: 'Closed',
+  OPEN: 'Open', ASSIGNED: 'Assigned', IN_PROGRESS: 'In progress', RESOLVED: 'Resolved', CLOSED: 'Closed', CANCELLED: 'Cancelled',
 };
 export const PRIORITY_LABELS = { LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', CRITICAL: 'Critical' };
 export const CATEGORY_LABELS = {
@@ -23,6 +23,9 @@ export const priorityBadge = (p) => `<span class="badge ${esc(p)}">${esc(PRIORIT
 export const categoryLabel = (c) => CATEGORY_LABELS[c] || c;
 
 const dateTime = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+/** Today's date as YYYY-MM-DD in the browser's time zone (used as the minimum of date inputs). */
+export const localToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
 export const formatDate = (iso) => (iso ? dateTime.format(new Date(iso)) : '-');
 
 export function toast(message, type = 'info') {

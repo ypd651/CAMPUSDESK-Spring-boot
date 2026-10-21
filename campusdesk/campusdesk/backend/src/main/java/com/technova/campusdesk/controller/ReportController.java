@@ -1,10 +1,12 @@
 package com.technova.campusdesk.controller;
 
+import com.technova.campusdesk.dto.AdvancedReportResponse;
 import com.technova.campusdesk.dto.SummaryResponse;
 import com.technova.campusdesk.security.UserPrincipal;
 import com.technova.campusdesk.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,5 +27,12 @@ public class ReportController {
     @Operation(summary = "Ticket counters; global for administrators, scoped for everyone else")
     public SummaryResponse summary(@AuthenticationPrincipal UserPrincipal actor) {
         return reportService.summary(actor);
+    }
+
+    @GetMapping("/advanced")
+    @PreAuthorize("hasAuthority('TICKET_READ_ALL')")
+    @Operation(summary = "Advanced statistics: average resolution time, tickets per category and per technician")
+    public AdvancedReportResponse advanced() {
+        return reportService.advanced();
     }
 }

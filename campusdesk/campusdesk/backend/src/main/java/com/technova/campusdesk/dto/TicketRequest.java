@@ -2,9 +2,11 @@ package com.technova.campusdesk.dto;
 
 import com.technova.campusdesk.entity.TicketCategory;
 import com.technova.campusdesk.entity.TicketPriority;
+import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 
 public record TicketRequest(
         @NotBlank(message = "Title is required")
@@ -19,5 +21,17 @@ public record TicketRequest(
         TicketCategory category,
 
         @NotNull(message = "Priority is required")
-        TicketPriority priority) {
+        TicketPriority priority,
+
+        /** Optional deadline requested by the user. */
+        @FutureOrPresent(message = "Due date cannot be in the past")
+        LocalDate dueDate,
+
+        /** Only used when editing: version of the ticket the client saw (409 if it changed meanwhile). */
+        Long version) {
+
+    public TicketRequest(String title, String description, TicketCategory category,
+                         TicketPriority priority, LocalDate dueDate) {
+        this(title, description, category, priority, dueDate, null);
+    }
 }

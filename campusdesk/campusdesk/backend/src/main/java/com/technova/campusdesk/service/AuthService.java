@@ -1,15 +1,16 @@
 package com.technova.campusdesk.service;
 
 import com.technova.campusdesk.dto.AuthResponse;
+import com.technova.campusdesk.dto.ChangePasswordRequest;
+import com.technova.campusdesk.dto.CreateUserRequest;
 import com.technova.campusdesk.dto.LoginRequest;
 import com.technova.campusdesk.dto.RegisterRequest;
 import com.technova.campusdesk.dto.UserResponse;
 import com.technova.campusdesk.entity.Role;
 import com.technova.campusdesk.entity.User;
-import com.technova.campusdesk.exception.BusinessRuleException;
+import com.technova.campusdesk.exception.BadRequestException;
 import com.technova.campusdesk.exception.ResourceNotFoundException;
 import com.technova.campusdesk.exception.UnauthorizedException;
-import com.technova.campusdesk.repository.RoleRepository;
 import com.technova.campusdesk.repository.UserRepository;
 import com.technova.campusdesk.security.JwtUtil;
 import com.technova.campusdesk.security.UserPrincipal;
@@ -21,35 +22,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final UserRepository users;
-    private final RoleRepository roles;
+    private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    public AuthService(UserRepository users, RoleRepository roles,
+    public AuthService(UserRepository users, UserService userService,
                        PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
         this.users = users;
-        this.roles = roles;
+        this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
 
-    /** Public registration always creates a USER account; privileged roles are provisioned by an administrator. */
+    /**
+     * There is no public self-registration: accounts are created by an administrator (the controller requires
+     * USERS_MANAGE). This endpoint always creates a USER account; other roles use POST /api/users.
+     */
     @Transactional
-    public UserResponse register(RegisterRequest request) {
-        String email = normalize(request.email());
-        if (users.existsByEmailIgnoreCase(email)) {
-            throw new BusinessRuleException("Email is already registered");
-        }
-        Role role = roles.findById(Role.USER)
-                .orElseThrow(() -> new IllegalStateException("Default role USER is missing"));
-
-        User user = new User();
-        user.setFullName(request.fullName().trim());
-        user.setEmail(email);
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setRole(role);
-        user.setEnabled(true);
-        return UserResponse.from(users.save(user));
+    public UserResponse register(RegisterRequest request, UserPrincipal actor) {
+        return userService.create(new CreateUserRequest(request.fullName(), request.email(),
+                request.password(), Role.USER), actor);
     }
 
     @Transactional(readOnly = true)
@@ -61,6 +53,24 @@ public class AuthService {
 
         String token = jwtUtil.create(user.getEmail());
         return new AuthResponse(token, "Bearer", jwtUtil.expirationSeconds(), UserResponse.from(user));
+    }
+
+    /**
+     * Changes the password of the current user. A wrong current password is a 400 (not 401), so the
+     * frontend does not mistake it for an expired session. Existing tokens stay valid until they expire.
+     */
+    @Transactional
+    public void changePassword(UserPrincipal principal, ChangePasswordRequest request) {
+        User user = users.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("The new password must be different from the current one");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        users.save(user);
     }
 
     @Transactional(readOnly = true)

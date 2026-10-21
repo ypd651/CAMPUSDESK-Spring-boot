@@ -50,7 +50,7 @@ public class CommentService {
             throw new ForbiddenException("Your role cannot add comments");
         }
         if (!ticket.getStatus().isActive()) {
-            throw new BusinessRuleException("Closed tickets cannot receive comments");
+            throw new BusinessRuleException("Closed or cancelled tickets cannot receive comments");
         }
         User author = users.findById(actor.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -60,6 +60,23 @@ public class CommentService {
         comment.setAuthor(author);
         comment.setContent(request.content().trim());
         return CommentResponse.from(comments.save(comment));
+    }
+
+    /** The author can delete their own comment while the ticket is still active. */
+    @Transactional
+    public void delete(Long ticketId, Long commentId, UserPrincipal actor) {
+        Ticket ticket = loadTicket(ticketId);
+        policy.requireView(actor, ticket);
+        Comment comment = comments.findById(commentId)
+                .filter(candidate -> candidate.getTicket().getId().equals(ticketId))
+                .orElseThrow(() -> new ResourceNotFoundException("Comment not found"));
+        if (!comment.getAuthor().getId().equals(actor.getId())) {
+            throw new ForbiddenException("Only the author can delete a comment");
+        }
+        if (!ticket.getStatus().isActive()) {
+            throw new BusinessRuleException("Comments of a closed or cancelled ticket cannot be changed");
+        }
+        comments.delete(comment);
     }
 
     private Ticket loadTicket(Long id) {

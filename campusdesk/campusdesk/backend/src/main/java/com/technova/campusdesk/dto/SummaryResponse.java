@@ -10,5 +10,6 @@ public record SummaryResponse(
         long inProgress,
         long resolved,
         long closed,
+        long cancelled,
         Map<String, Long> byPriority) {
 }
