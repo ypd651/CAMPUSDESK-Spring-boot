@@ -10,7 +10,6 @@ OPEN -> ASSIGNED -> IN_PROGRESS -> RESOLVED -> CLOSED
 
 ## Team
 - Yeison Ferney Pallares Duque
-- _Add the other members here, if any_
 
 ## Tech stack
 | Layer | Technology |
